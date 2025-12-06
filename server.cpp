@@ -1,14 +1,17 @@
+// FILE: server.cpp
+// PURPOSE: HTTP Wrapper + Your DFA & PDA Logic
+
 #include <iostream>
 #include <string>
 #include <stack>
 #include <cstdlib>
-#include <sys/socket.h>
-#include <netinet/in.h>
+#include <cstring>
 #include <unistd.h>
+#include <netinet/in.h>
 
 using namespace std;
 
-// --- DFA (Command Injection Filter) ---
+// ===================== DFA LOGIC (YOUR CODE) =====================
 bool dfa_scan(string payload) {
     int state = 0;
     for (char c : payload) {
@@ -19,73 +22,82 @@ bool dfa_scan(string payload) {
             case 3: state = (c == 'a') ? 4 : (c == 'w' ? 1 : 0); break;
             case 4: state = (c == 'm') ? 5 : (c == 'w' ? 1 : 0); break;
             case 5: state = (c == 'i') ? 6 : (c == 'w' ? 1 : 0); break;
-            case 6: return true;
+            case 6: return true; 
         }
     }
     return state == 6;
 }
 
-// --- PDA (DoS / Structure Validator) ---
+// ===================== PDA LOGIC (YOUR CODE) =====================
 int pda_validate(string payload) {
     stack<char> s;
     int MAX_DEPTH = 3;
 
     for (char c : payload) {
         if (c == '<') {
-            if (s.size() >= MAX_DEPTH) return 2; // Too deep
+            if (s.size() >= MAX_DEPTH) return 2;
             s.push(c);
         } else if (c == '>') {
-            if (s.empty()) return 1; // Underflow
+            if (s.empty()) return 1;
             s.pop();
         }
     }
-
-    if (!s.empty()) return 1; // Unbalanced
+    if (!s.empty()) return 1;
     return 0;
 }
 
-// --- HTTP RESPONSE ---
+// ===================== HTTP RESPONSE HELPER =====================
 string http_response(string body) {
-    return "HTTP/1.1 200 OK\r\n"
-           "Content-Type: text/plain\r\n"
-           "Access-Control-Allow-Origin: *\r\n"
-           "\r\n" + body;
+    return
+        "HTTP/1.1 200 OK\r\n"
+        "Content-Type: text/plain\r\n"
+        "Access-Control-Allow-Origin: *\r\n"
+        "Content-Length: " + to_string(body.size()) + "\r\n\r\n" +
+        body;
 }
 
+// ===================== MAIN SERVER =====================
 int main() {
-    int port = std::atoi(std::getenv("PORT")); // Railway provides PORT
+    int port = atoi(getenv("PORT"));
     int server_fd = socket(AF_INET, SOCK_STREAM, 0);
+
     sockaddr_in addr{};
     addr.sin_family = AF_INET;
-    addr.sin_port = htons(port);
     addr.sin_addr.s_addr = INADDR_ANY;
+    addr.sin_port = htons(port);
 
     bind(server_fd, (sockaddr*)&addr, sizeof(addr));
-    listen(server_fd, 10);
+    listen(server_fd, 5);
 
-    cout << "C++ HTTP backend running on port " << port << endl;
+    cout << "Server running on port " << port << endl;
 
-    while(true){
+    while (true) {
         int client_fd = accept(server_fd, nullptr, nullptr);
-        char buffer[4096] = {0};
-        read(client_fd, buffer, 4096);
+
+        char buffer[2048] = {0};
+        read(client_fd, buffer, 2048);
         string req = buffer;
 
-        // Extract input from URL: /scan?input=PAYLOAD
+        // ========= Extract input from GET /scan?input=xxxx =========
         string payload = "";
-        size_t pos = req.find("GET /scan?input=");
-        if(pos != string::npos){
-            int start = pos + 17;
-            int end = req.find(" ", start);
+        size_t p = req.find("GET /scan?input=");
+        if (p != string::npos) {
+            size_t start = p + 17;
+            size_t end = req.find(" ", start);
             payload = req.substr(start, end - start);
         }
 
+        // ========= Run DFA & PDA =========
         bool malicious = dfa_scan(payload);
         int pda_result = pda_validate(payload);
 
-        string output = (malicious ? "1" : "0") + string("|") + to_string(pda_result);
-        string response = http_response(output);
+        string result = (malicious ? "1" : "0") + string("|") + to_string(pda_result);
+
+        // ========= Send response =========
+        string response = http_response(result);
         send(client_fd, response.c_str(), response.size(), 0);
         close(client_fd);
     }
+
+    return 0;
 }
