@@ -1,5 +1,5 @@
 // FILE: server.cpp
-// PURPOSE: HTTP Wrapper + Your DFA & PDA Logic
+// PURPOSE: HTTP Wrapper + DFA & PDA Logic (with URL decoding for Railway)
 
 #include <iostream>
 #include <string>
@@ -11,7 +11,7 @@
 
 using namespace std;
 
-// ===================== DFA LOGIC (YOUR CODE) =====================
+// ===================== DFA LOGIC =====================
 bool dfa_scan(string payload) {
     int state = 0;
     for (char c : payload) {
@@ -28,7 +28,7 @@ bool dfa_scan(string payload) {
     return state == 6;
 }
 
-// ===================== PDA LOGIC (YOUR CODE) =====================
+// ===================== PDA LOGIC =====================
 int pda_validate(string payload) {
     stack<char> s;
     int MAX_DEPTH = 3;
@@ -46,7 +46,29 @@ int pda_validate(string payload) {
     return 0;
 }
 
-// ===================== HTTP RESPONSE HELPER =====================
+// ===================== URL DECODING =====================
+string url_decode(const string &src) {
+    string ret;
+    char ch;
+    int i, ii;
+    for (i = 0; i < src.length(); i++) {
+        if (src[i] == '%') {
+            if (i + 2 < src.length()) {
+                sscanf(src.substr(i + 1, 2).c_str(), "%x", &ii);
+                ch = static_cast<char>(ii);
+                ret += ch;
+                i += 2;
+            }
+        } else if (src[i] == '+') {
+            ret += ' ';
+        } else {
+            ret += src[i];
+        }
+    }
+    return ret;
+}
+
+// ===================== HTTP RESPONSE =====================
 string http_response(string body) {
     return
         "HTTP/1.1 200 OK\r\n"
@@ -85,6 +107,7 @@ int main() {
             size_t start = p + 17;
             size_t end = req.find(" ", start);
             payload = req.substr(start, end - start);
+            payload = url_decode(payload); // FIX: decode URL
         }
 
         // ========= Run DFA & PDA =========
