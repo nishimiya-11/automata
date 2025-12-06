@@ -1,5 +1,6 @@
 // FILE: server.cpp
 // PURPOSE: HTTP Wrapper + DFA & PDA Logic (with URL decoding for Railway)
+// STATUS: FIXED (Payload extraction logic corrected)
 
 #include <iostream>
 #include <string>
@@ -11,7 +12,7 @@
 
 using namespace std;
 
-// ===================== DFA LOGIC =====================
+// ===================== DFA LOGIC (Signature: whoami) =====================
 bool dfa_scan(string payload) {
     int state = 0;
     for (char c : payload) {
@@ -28,30 +29,30 @@ bool dfa_scan(string payload) {
     return state == 6;
 }
 
-// ===================== PDA LOGIC =====================
+// ===================== PDA LOGIC (Depth Check > 3) =====================
 int pda_validate(string payload) {
     stack<char> s;
     int MAX_DEPTH = 3;
 
     for (char c : payload) {
         if (c == '<') {
-            if (s.size() >= MAX_DEPTH) return 2;
+            if (s.size() >= MAX_DEPTH) return 2; // DoS Check
             s.push(c);
         } else if (c == '>') {
-            if (s.empty()) return 1;
+            if (s.empty()) return 1; // Syntax Error
             s.pop();
         }
     }
-    if (!s.empty()) return 1;
-    return 0;
+    if (!s.empty()) return 1; // Syntax Error
+    return 0; // Safe
 }
 
 // ===================== URL DECODING =====================
 string url_decode(const string &src) {
     string ret;
     char ch;
-    int i, ii;
-    for (i = 0; i < src.length(); i++) {
+    int ii;
+    for (size_t i = 0; i < src.length(); i++) {
         if (src[i] == '%') {
             if (i + 2 < src.length()) {
                 sscanf(src.substr(i + 1, 2).c_str(), "%x", &ii);
@@ -80,21 +81,37 @@ string http_response(string body) {
 
 // ===================== MAIN SERVER =====================
 int main() {
-    int port = atoi(getenv("PORT"));
+    // Railway gives a PORT env var. Fallback to 8080 if not set.
+    const char* env_port = getenv("PORT");
+    int port = (env_port) ? atoi(env_port) : 8080;
+    
     int server_fd = socket(AF_INET, SOCK_STREAM, 0);
+    if (server_fd < 0) {
+        perror("Socket creation failed");
+        return 1;
+    }
+
+    // Allow restarting the server immediately without waiting for port to free up
+    int opt = 1;
+    setsockopt(server_fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
 
     sockaddr_in addr{};
     addr.sin_family = AF_INET;
     addr.sin_addr.s_addr = INADDR_ANY;
     addr.sin_port = htons(port);
 
-    bind(server_fd, (sockaddr*)&addr, sizeof(addr));
+    if (bind(server_fd, (sockaddr*)&addr, sizeof(addr)) < 0) {
+        perror("Bind failed");
+        return 1;
+    }
+
     listen(server_fd, 5);
 
     cout << "Server running on port " << port << endl;
 
     while (true) {
         int client_fd = accept(server_fd, nullptr, nullptr);
+        if (client_fd < 0) continue;
 
         char buffer[2048] = {0};
         read(client_fd, buffer, 2048);
@@ -102,12 +119,20 @@ int main() {
 
         // ========= Extract input from GET /scan?input=xxxx =========
         string payload = "";
-        size_t p = req.find("GET /scan?input=");
+        
+        // Use a variable so we can measure its length automatically
+        string prefix = "GET /scan?input=";
+        size_t p = req.find(prefix);
+        
         if (p != string::npos) {
-            size_t start = p + 17;
+            // FIX IS HERE: Use prefix.length() (which is 16)
+            size_t start = p + prefix.length(); 
             size_t end = req.find(" ", start);
-            payload = req.substr(start, end - start);
-            payload = url_decode(payload); // FIX: decode URL
+            
+            if (end != string::npos) {
+                 payload = req.substr(start, end - start);
+                 payload = url_decode(payload);
+            }
         }
 
         // ========= Run DFA & PDA =========
