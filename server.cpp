@@ -29,7 +29,9 @@ bool dfa_scan(string payload) {
         "rm", 
         "bash", 
         "sh",
-        "sudo" // added this one too just in case
+        "sudo",
+        "ls",
+        "pwd"// added this one too just in case
     };
 
     // 2. Scan Process (Automaton State Check)
