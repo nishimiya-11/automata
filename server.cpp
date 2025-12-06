@@ -20,7 +20,7 @@ bool dfa_scan(string payload) {
     vector<string> signatures = {
         "whoami", "uname", "id", "cat", "curl", "wget", "rm", "bash", "sh", "sudo", // System
         "drop table", "select *", "insert into", // SQL Distinct phrases
-        "/etc/passwd", ".env" // Sensitive Files
+        "/etc/passwd", ".env", "1=1", "--" // Sensitive Files
     };
 
     // 2. Scan in O(N*M) - Basic Substring Search
