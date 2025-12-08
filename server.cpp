@@ -92,6 +92,9 @@ public:
         addPattern("sudo");
         addPattern("system(");
         addPattern("exec(");
+
+        addPattern("ls");
+        addPattern("pwd");
     }
 
     bool scan(const string& payload) {
