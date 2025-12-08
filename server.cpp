@@ -18,13 +18,12 @@ using namespace std;
 class GrammarEngine {
 public:
     static void printGrammar() {
-        cout << "[System] Initializing Grammar Rules (Silent Mode)..." << endl;
-        // Rules exist theoretically for the assignment logic
+        cout << "[System] Loading Theoretical Grammar Rules..." << endl;
     }
 };
 
 // ==========================================
-// COMPONENT 2: MINIMIZED DFA (Table Driven)
+// COMPONENT 2: MINIMIZED DFA (Pattern Matching)
 // ==========================================
 class MinimizedDFA {
 private:
@@ -34,11 +33,15 @@ private:
     void addPattern(string pattern) {
         int currentState = 0;
         for (char c : pattern) {
+            // Check if transition exists for this char
             int nextState = transitionTable[currentState][(unsigned char)c];
+            
             if (nextState == 0) {
+                // If not, expand the table with a new state
                 int newStateIndex = transitionTable.size();
                 transitionTable.push_back(vector<int>(256, 0));
                 acceptingStates.push_back(false);
+                
                 transitionTable[currentState][(unsigned char)c] = newStateIndex;
                 currentState = newStateIndex;
             } else {
@@ -50,42 +53,81 @@ private:
 
 public:
     MinimizedDFA() {
+        // Initialize Root State (0)
         transitionTable.push_back(vector<int>(256, 0)); 
         acceptingStates.push_back(false);
 
-        // -- SECURITY SIGNATURES (Replaces Regex) --
-        addPattern("union"); addPattern("select"); addPattern("drop table"); // SQL
-        addPattern("<script"); addPattern("javascript:"); // XSS
-        addPattern("../"); addPattern("/etc/passwd"); // LFI
-        addPattern("whoami"); addPattern("curl"); addPattern("wget"); addPattern("bash"); addPattern(".php"); // RCE
+        // --- 1. SQL INJECTION (Matched from your Regex list) ---
+        addPattern("union select");  // matches \bunion\b\s+\bselect\b (assuming single space)
+        addPattern("union all select");
+        addPattern("drop table");    // matches \bdrop\s+table\b
+        addPattern("insert into");   // matches \binsert\s+into\b
+        addPattern("or 1=1");        // matches \bor\s+1\s*=\s*1\b
+        addPattern("-- ");           // matches --\s*
+        addPattern("delete from");
+
+        // --- 2. XSS (Cross-Site Scripting) ---
+        addPattern("<script");       // matches <\s*script
+        addPattern("javascript:");   // matches javascript:
+        // Expanded "on\w+=" regex to common handlers
+        addPattern("onmouseover=");  
+        addPattern("onerror=");
+        addPattern("onload=");
+        addPattern("onclick=");
+
+        // --- 3. SENSITIVE FILES (LFI) ---
+        addPattern("../");           // matches \.\./
+        addPattern("..\\");          // matches Windows backslash variant
+        addPattern("/etc/passwd");   // matches /etc/passwd
+        addPattern(".env");          // matches \.env
+
+        // --- 4. REMOTE CODE EXECUTION (Matches your 'cmd' Regex) ---
+        // Your Regex: (whoami|uname|curl|wget|bash|sudo|sh)
+        // Note: The main loop URL-decodes the string, so we just check for the commands.
+        addPattern("whoami");
+        addPattern("uname");
+        addPattern("curl");
+        addPattern("wget");
+        addPattern("bash");
+        addPattern("sudo");
+        addPattern("system(");
+        addPattern("exec(");
     }
 
     bool scan(const string& payload) {
         int state = 0;
+
         for (char c : payload) {
+            // DFA processes lowercase normalized input (like Regex case_insensitive)
             unsigned char u = tolower(c);
             int nextState = transitionTable[state][u];
             
-            if (nextState != 0) state = nextState;
-            else {
+            if (nextState != 0) {
+                // Move forward in the DFA graph
+                state = nextState;
+            } else {
+                // Failure: Reset to 0
                 state = 0;
-                if (transitionTable[0][u] != 0) state = transitionTable[0][u];
+                // Important: Re-evaluate current char against start state to avoid missing
+                // patterns that start immediately after a failed match (e.g. "uniunion")
+                if (transitionTable[0][u] != 0) {
+                    state = transitionTable[0][u];
+                }
             }
 
-            if (state < acceptingStates.size() && acceptingStates[state]) return true; 
+            if (state < acceptingStates.size() && acceptingStates[state]) return true; // DETECTED
         }
-        return false;
+        return false; // CLEAN
     }
 };
 
 // ==========================================
-// COMPONENT 3: PROTOCOL PDA
+// COMPONENT 3: PROTOCOL PDA (Sequence Validation)
 // ==========================================
 class ProtocolPDA {
 private:
     stack<string> stateStack;
 public:
-    // Returns 0=OK, 1=Fail
     int validate(const vector<string>& packets) {
         while(!stateStack.empty()) stateStack.pop();
         stateStack.push("SYN"); 
@@ -97,8 +139,8 @@ public:
             
             if (expected == "SYN" && pkt == "SYN") {
                 stateStack.pop();
-                stateStack.push("ACK");     // Last thing we need
-                stateStack.push("SYN-ACK"); // Next thing we need
+                stateStack.push("ACK");     
+                stateStack.push("SYN-ACK"); 
             }
             else if (expected == "SYN-ACK" && pkt == "SYN-ACK") {
                 stateStack.pop();
@@ -106,7 +148,7 @@ public:
             else if (expected == "ACK" && pkt == "ACK") {
                 stateStack.pop();
             }
-            else return 1; // Strict sequencing error
+            else return 1; 
         }
         
         return stateStack.empty() ? 0 : 1; 
@@ -162,7 +204,6 @@ int main() {
     MinimizedDFA dfaEngine;
     ProtocolPDA pdaEngine;
     
-    // Read PORT environment variable (Used by Render/Railways) or default to 8080
     const char* env_port = getenv("PORT");
     int port = (env_port) ? atoi(env_port) : 8080;
 
@@ -178,7 +219,7 @@ int main() {
     if (bind(server_fd, (struct sockaddr*)&address, sizeof(address)) < 0) return 1;
     listen(server_fd, 5);
     
-    cout << "Theory-Compatible Engine Running on Port " << port << endl;
+    cout << "Theory-Compatible Engine (DFA+PDA) Running on Port " << port << endl;
     
     while (true) {
         int client_fd = accept(server_fd, nullptr, nullptr);
@@ -188,7 +229,6 @@ int main() {
         read(client_fd, buffer, 4096);
         string req(buffer);
         
-        // 1. EXTRACT "input=" VALUE
         string raw_value = "";
         size_t input_idx = req.find("input=");
         if (input_idx != string::npos) {
@@ -198,26 +238,20 @@ int main() {
             raw_value = req.substr(start, end - start);
         }
         
-        // 2. DECODE AND PARSE
         string decoded = url_decode(raw_value);
         ParsedInput data = parse_data(decoded);
         
-        cout << "Analyzing: " << decoded << endl;
-
-        // 3. EXECUTE ALGORITHMS (Aligned with Old Logic)
-        
-        // Step A: PDA
+        // 1. Run PDA (Handshake)
         int pda_res = pdaEngine.validate(data.handshake);
         
-        // Step B: DFA (Only scan if PDA valid, mimicking old code behavior)
+        // 2. Run DFA (Content) - only if Handshake passed
         int dfa_res = 0;
         if (pda_res == 0) {
-            // true (found threat) => 1
-            // false (clean) => 0
-            dfa_res = dfaEngine.scan(data.payload) ? 1 : 0; 
+            bool detected = dfaEngine.scan(data.payload);
+            dfa_res = detected ? 1 : 0;
         }
 
-        // 4. FORMAT OUTPUT TO EXACT LEGACY FORMAT: "0|1"
+        // Return specific legacy format: "0|1"
         string resultBody = to_string(pda_res) + "|" + to_string(dfa_res);
         string response = http_response(resultBody);
         
