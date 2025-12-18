@@ -24,16 +24,12 @@ private:
     vector<vector<int>> transitionTable;
     vector<bool> acceptingStates;
 
-    // CHANGED: This method now acts as a Regex Compiler.
-    // Instead of just mapping one character, it compiles the pattern (like "union")
-    // into a set of state transitions that accept any case variation (UNION, union, UnIoN).
-    // By merging the edges for 'u' and 'U' to point to the same next state, 
-    // we effectively minimize the DFA state count relative to a raw NFA.
+  
     void addPattern(string pattern) {
         int currentState = 0;
         for (char c : pattern) {
             unsigned char lower = tolower(c);
-            unsigned char upper = toupper(c); // ADDED: Identify the alternative input edge
+            unsigned char upper = toupper(c); 
 
             int nextState = transitionTable[currentState][lower];
             
@@ -42,8 +38,7 @@ private:
                 transitionTable.push_back(vector<int>(256, 0));
                 acceptingStates.push_back(false);
 
-                // ADDED: Point both Upper and Lower case inputs to the SAME destination state.
-                // In graph theory, this merges parallel edges, simplifying the automaton.
+               
                 transitionTable[currentState][lower] = newStateIndex;
                 transitionTable[currentState][upper] = newStateIndex;
                 
@@ -93,9 +88,7 @@ public:
         addPattern("pwd");
     }
 
-    // CHANGED: This scan function now represents a "Pure" DFA execution.
-    // We removed runtime processing (tolower calls). The transitionTable now
-    // explicitly defines all valid moves, satisfying the formal definition of
+   
     // a DFA: delta(state, input_symbol) -> next_state.
     bool scan(const string& payload) {
         int state = 0;
