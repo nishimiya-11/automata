@@ -12,13 +12,11 @@
 
 using namespace std;
 
-
-class MinimizedDFA {
+class PatternDFA {
 private:
     vector<vector<int>> transitionTable;
     vector<bool> acceptingStates;
 
-  
     void addPattern(string pattern) {
         int currentState = 0;
         for (char c : pattern) {
@@ -32,7 +30,6 @@ private:
                 transitionTable.push_back(vector<int>(256, 0));
                 acceptingStates.push_back(false);
 
-               
                 transitionTable[currentState][lower] = newStateIndex;
                 transitionTable[currentState][upper] = newStateIndex;
                 
@@ -45,7 +42,7 @@ private:
     }
 
 public:
-    MinimizedDFA() {
+    PatternDFA() {
         transitionTable.push_back(vector<int>(256, 0));
         acceptingStates.push_back(false);
 
@@ -82,19 +79,16 @@ public:
         addPattern("pwd");
     }
 
-   
-    // a DFA: delta(state, input_symbol) -> next_state.
     bool scan(const string& payload) {
         int state = 0;
         for (char c : payload) {
-            unsigned char u = (unsigned char)c; // CHANGED: No preprocessing on input needed anymore
+            unsigned char u = (unsigned char)c;
             
             int nextState = transitionTable[state][u];
             if (nextState != 0) {
                 state = nextState;
             } else {
                 state = 0;
-                // Quick fallback logic for simulation purposes (Aho-Corasick failure links ideal here)
                 if (transitionTable[0][u] != 0) {
                     state = transitionTable[0][u];
                 }
@@ -105,7 +99,6 @@ public:
     }
 };
 
-// PDA
 class ProtocolPDA {
 private:
     stack<string> stateStack;
@@ -176,7 +169,7 @@ string http_response(const string &body) {
 }
 
 int main() {
-    MinimizedDFA dfaEngine;
+    PatternDFA dfaEngine;
     ProtocolPDA pdaEngine;
 
     const char* env_port = getenv("PORT");
