@@ -12,12 +12,6 @@
 
 using namespace std;
 
-class GrammarEngine {
-public:
-    static void printGrammar() {
-        cout << "[System] Loading Theoretical Grammar Rules..." << endl; //if we didnt used UI frontend
-    }
-};
 
 class MinimizedDFA {
 private:
