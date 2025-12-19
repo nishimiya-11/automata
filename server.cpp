@@ -101,32 +101,52 @@ public:
 
 class ProtocolPDA {
 private:
-    stack<string> stateStack;
+    enum State { Q0, Q1, Q2 };
+    stack<char> st;
+    State currentState;
+
 public:
+    ProtocolPDA() {
+        while (!st.empty()) st.pop();
+        st.push('Z');          
+        currentState = Q0;    
+    }
+
     int validate(const vector<string>& packets) {
-        while(!stateStack.empty()) stateStack.pop();
-        stateStack.push("SYN");
+       
+        while (!st.empty()) st.pop();
+        st.push('Z');
+        currentState = Q0;
 
         for (const string& pkt : packets) {
-            if (stateStack.empty()) return 1;
-            string expected = stateStack.top();
+            if (st.empty()) return 1;
+            char top = st.top();
 
-            if (expected == "SYN" && pkt == "SYN") {
-                stateStack.pop();
-                stateStack.push("ACK");
-                stateStack.push("SYN-ACK");
+           
+            if (currentState == Q0 && pkt == "SYN" && top == 'Z') {
+                st.push('S');
+                currentState = Q1;
             }
-            else if (expected == "SYN-ACK" && pkt == "SYN-ACK") {
-                stateStack.pop();
+          
+            else if (currentState == Q1 && pkt == "SYN-ACK" && top == 'S') {
+                st.pop();
+                st.push('A');
+                currentState = Q2;
             }
-            else if (expected == "ACK" && pkt == "ACK") {
-                stateStack.pop();
+        
+            else if (currentState == Q2 && pkt == "ACK" && top == 'A') {
+                st.pop();
             }
-            else return 1;
+            else {
+                return 1; // reject
+            }
         }
-        return stateStack.empty() ? 0 : 1;
+
+        if (!st.empty() && st.top() == 'Z') st.pop();
+        return st.empty() ? 0 : 1;
     }
 };
+
 
 string url_decode(const string &src) {
     string ret;
